@@ -22,224 +22,138 @@ entity project_reti_logiche is
 end project_reti_logiche;
 
 architecture project_reti_logiche_arch of project_reti_logiche is
-    type S is (SS, S0, S1, S2, S3, S4, S5, S6, S7);
+    type S is (S0, S1, S2, S3, S4, S5);    
+    signal curr_state, next_state : S;
     
-    signal curr_state : S;
-    
-    signal is_0: std_logic;
-    signal isnot_0 : std_logic;
-    signal shift_rst : std_logic;
-    signal mem_read : std_logic;
-    signal mem_write : std_logic;
-    signal cred_write : std_logic;
-    signal cred_write_31 : std_logic;
-    signal val_controll : std_logic;
-    signal update : std_logic;
-    signal temp_done : std_logic;
-    signal done_controll : std_logic;
-    
-    signal path : std_logic_vector(1 downto 0);
+    signal done_con: std_logic;
+    signal subbed: std_logic;
+    signal temp_done: std_logic;
     signal curr_addr : std_logic_vector(15 downto 0);
+    signal path : std_logic_vector(1 downto 0);
     signal curr_val : std_logic_vector(7 downto 0);
     signal curr_cred : std_logic_vector(7 downto 0);
-    
     signal prec_val : std_logic_vector(7 downto 0);
     signal prec_cred : std_logic_vector(7 downto 0);
     
-begin
+    begin
     
-    fsm : process(i_clk, i_rst)
+        process(i_clk, i_rst)
     begin
         if i_rst = '1' then
-            curr_state <= SS;
-        elsif i_clk'event and i_clk = '1' then
-            case curr_state is
-                when SS =>
-                    if i_start = '0' then
-                        curr_state <= SS;
-                    elsif i_start = '1' then
-                        curr_state <= S0;
-                    end if;
-                                        
-                when S0 =>
-                    if i_start = '1' then
-                        if temp_done = '0' then
-                            curr_state <= S1;
-                        else
-                            curr_state <= SS;
-                        end if;
-                    end if;
-                 
-                when S1 =>
-                    if i_start = '1' then
-                        curr_state <= S2;
-                    end if;
-                    
-                when S2 =>
-                    if i_start = '1' then
-                        curr_state <= S3;
-                    end if;
-                    
-                    
-                when S3 =>
-                    if i_start = '1' then
-                        if path = "01" then
-                            curr_state <= S7;
-                        elsif path = "10" then
-                            curr_state <= S5;
-                        elsif path = "11" then
-                            curr_state <= S4;
-                        end if;
-                    end if;
-                    
-                when S4 =>
-                    if i_start = '1' then
-                        curr_state <= S7;
-                    end if;
-                    
-                when S5 =>
-                    if i_start = '1' then
-                        curr_state <= S6;
-                    end if;
-                    
-                when S6 =>
-                    if i_start = '1' then
-                        curr_state <= S7;
-                    end if;
-                    
-                when S7 =>
-                    if i_start = '1' then
-                        curr_state <= S0;
-                    end if;
-            end case;
+            curr_state <= S0;
+        elsif i_rst = '0' and i_clk'event and i_clk = '1' then
+            curr_state <= next_state;
         end if;
-    end process;
-    
-    fsm_lambda : process(curr_state)
-    begin
-        o_mem_en <= '0';
-        o_mem_we <= '0';
-        shift_rst <= '0';
-        
-        val_controll <= '0';
-        update <= '0';
-        mem_read <= '0';
-        mem_write <= '0';
-        cred_write <= '0';
-        cred_write_31 <= '0';
-        temp_done <= '0';
-        done_controll <= '0';
-        
-        path <= "00";
-        prec_val <= "00000000";
-        prec_cred <= "00000000";
-        curr_val <= "00000000";
-        curr_cred <= "00000000";
-        curr_addr <= i_add;
         
         case curr_state is
-            when SS =>
-                done_controll <= '1';
-            
             when S0 =>
-                done_controll <= '0';
-                update <= '0';
+                if i_start = '0' or temp_done = '1' then
+                    next_state <= S0;
+                else
+                    done_con <= '0';
+                    subbed <= '0';
+                    o_mem_en <= '0';
+                    o_mem_we <= '0';
+                    o_done <= '0';
+                    temp_done <= '0';
+                    curr_addr <= i_add;
+                    path <= "00";
+                    curr_val <= "00000000";
+                    curr_cred <= "00000000";
+                    prec_val <= "00000000";
+                    prec_cred <= "00000000";
+                    next_state <= S1;
+                end if;
                 
             when S1 =>
-                mem_read <= '1';
-            
+                if rising_edge(i_clk) then
+                    done_con <= '0';
+                    subbed <= '0';
+                    if temp_done = '1' then
+                        next_state <= S0;
+                    else
+                        o_mem_en <= '1';
+                        o_mem_addr <= curr_addr;
+                        next_state <= S2;
+                    end if;
+                end if;
+                
             when S2 =>
-                val_controll <= '1';
-                mem_read <= '0';
-
-            when S3 =>                
-                val_controll <= '0';         
+                if rising_edge(i_clk) then
+                    o_mem_en <= '0';
+                    curr_val <= i_mem_data;
+                    if i_mem_data = "00000000" then
+                        if prec_val = "00000000" and prec_cred = "00000000" then
+                            path <= "01";
+                        else
+                            path <= "11";
+                        end if;
+                    else
+                        path <= "10";
+                    end if;
+                    next_state <= S3;
+                end if;
+                
+            when S3 =>
+                if rising_edge(i_clk) then
+                    if path = "10" or path = "11" then
+                        o_mem_en <= '1';
+                        o_mem_we <= '1';
+                        if path = "10" then
+                            o_mem_addr <= curr_addr + 1;
+                            o_mem_data <= "00011111";
+                            prec_cred <= "00011111";
+                        else
+                            o_mem_addr <= curr_addr + 1;
+                            if prec_cred = "00000000" then
+                                o_mem_data <= "00000000";
+                            else
+                                if subbed = '0' then
+                                    subbed <= '1';
+                                    o_mem_data <= prec_cred - 1;
+                                    prec_cred <= prec_cred - 1;
+                                end if;
+                            end if;
+                        end if;
+                    end if;
+                    next_state <= S4;
+                end if;
             
             when S4 =>
-                mem_write <= '1';
-                mem_read <= '1';
-                cred_write_31 <= '1';
-
-            when S5 =>
-                mem_write <= '1';
-                mem_read <= '1';
-                                
-            when S6 =>
-                cred_write <= '1';
+                if rising_edge(i_clk) then
+                    subbed <= '0';
+                    if path = "11" then
+                        o_mem_addr <= curr_addr;
+                        o_mem_data <= prec_val;
+                    end if;
+                    next_state <= S5;
+                end if;
                 
-            when S7 =>
-                mem_write <= '0';
-                mem_read <= '0';
-                cred_write <= '0';
-                cred_write_31 <= '0';
-                cred_write <= '0';
-                update <= '1';
+            when S5 =>
+                if rising_edge(i_clk) then
+                    if done_con = '0' then
+                        done_con <= '1';
+                        if curr_addr = ((i_k-1) + (i_k-1) + i_add) then -- 2*(k-1)
+                            temp_done <= '1';
+                            o_done <= '1';
+                        end if;
+                    end if;
+                    o_mem_en <= '0';
+                    o_mem_we <= '0';
+                    if subbed = '0' then
+                        subbed <= '1';
+                        curr_addr <= curr_addr + 2;
+                    end if;
+                    if path = "01" then
+                        prec_val <= "00000000";
+                    elsif path = "10" then
+                        prec_val <= curr_val;
+                    else
+                        prec_val <= prec_val;
+                    end if;
+                    next_state <= S1;
+                end if;
 
         end case;
     end process;
-    
-    done_controll_comp: process(i_clk, done_controll)
-    begin
-        if temp_done = '1' and i_start = '0' then
-            temp_done <= '0';
-            o_done <= '0';
-            prec_val <= "00000000";
-            prec_cred <= "00000000";
-        end if;
-    end process;
-
-    memory_access: process(i_clk, mem_read, mem_write, cred_write)
-    begin
-        if mem_read = '1' and mem_write = '0' then
-            o_mem_en <= '1';
-            o_mem_we <= '0';
-            o_mem_addr <= curr_addr;
-        elsif mem_read = '1' and mem_write = '1' then
-            o_mem_we <= '1';
-            o_mem_en <= '1';
-            if cred_write = '0' and cred_write_31 = '0' then
-                o_mem_addr <= curr_addr;
-                o_mem_data <= curr_val;
-            else
-                o_mem_addr <= curr_addr + 1;
-                if cred_write = '1' and cred_write_31 = '0' then
-                    if prec_cred = "00000000" then
-                        o_mem_data <= "00000000";
-                        prec_cred <= "00000000";                    
-                    else
-                        o_mem_data <= prec_cred - 1;
-                        prec_cred <= prec_cred - 1;
-                    end if;
-                elsif cred_write = '0' and cred_write_31 = '1' then
-                    o_mem_data <= "00011111";
-                    prec_cred <= "00011111";
-                end if;
-            end if;
-        end if;
-    end process;
-    
-    val_controll_comp: process(i_clk, val_controll)
-    begin
-        curr_val <= i_mem_data;
-        if i_mem_data = "00000000" then
-            if prec_val = "00000000" and prec_cred = "00000000" then
-                path <= "01";
-            else
-                path <= "11";
-            end if;
-        else
-            path <= "10";
-        end if;
-    end process;
-    
-    update_comp: process(i_clk, update)
-    begin
-        prec_val <= curr_val;
-        curr_addr <= curr_addr + 2;
-        if curr_addr = ((i_k - 1) + (i_k - 1) + i_add) then -- 2*(k-1)
-            o_done <= '1';
-            temp_done <= '1';
-        end if;
-    end process;
-    
 end architecture;
