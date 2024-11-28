@@ -28,6 +28,7 @@ architecture project_reti_logiche_arch of project_reti_logiche is
     signal done_con: std_logic;
     signal subbed: std_logic;
     signal temp_done: std_logic;
+    signal last_addr: std_logic_vector(15 downto 0);
     signal curr_addr : std_logic_vector(15 downto 0);
     signal path : std_logic_vector(1 downto 0);
     signal curr_val : std_logic_vector(7 downto 0);
@@ -40,34 +41,56 @@ architecture project_reti_logiche_arch of project_reti_logiche is
         process(i_clk, i_rst)
     begin
         if i_rst = '1' then
+            done_con <= '0';
+            subbed <= '0';
+            o_mem_en <= '0';
+            o_mem_we <= '0';
+            curr_addr <= "0000000000000000";
+            last_addr <= "0000000000000000";
+            path <= "00";
+            curr_val <= "00000000";
+            curr_cred <= "00000000";
+            prec_val <= "00000000";
+            prec_cred <= "00000000";
+            temp_done <= '0';
             curr_state <= S0;
+            o_done <= '0';
         elsif i_rst = '0' and i_clk'event and i_clk = '1' then
             curr_state <= next_state;
-        end if;
-        
+            
         case curr_state is
             when S0 =>
-                if i_start = '0' or temp_done = '1' then
+                if i_start = '0' then
+                    temp_done <= '0';
                     o_done <= '0';
                     next_state <= S0;
                 else
-                    done_con <= '0';
-                    subbed <= '0';
-                    o_mem_en <= '0';
-                    o_mem_we <= '0';
-                    o_done <= '0';
-                    temp_done <= '0';
-                    curr_addr <= i_add;
-                    path <= "00";
-                    curr_val <= "00000000";
-                    curr_cred <= "00000000";
-                    prec_val <= "00000000";
-                    prec_cred <= "00000000";
-                    next_state <= S1;
+                    if temp_done = '1' or i_rst = '1' then
+                        next_state <= S0;
+                    else
+                        if i_k = "0000000000" and i_rst = '0' then
+                            o_done <= '1';
+                            temp_done <= '1';
+                            next_state <= S0;
+                        else
+                            done_con <= '0';
+                            subbed <= '0';
+                            o_mem_en <= '0';
+                            o_mem_we <= '0';
+                            curr_addr <= i_add;
+                            last_addr <= i_add + (i_k - 1) + (i_k - 1);
+                            path <= "00";
+                            curr_val <= "00000000";
+                            curr_cred <= "00000000";
+                            prec_val <= "00000000";
+                            prec_cred <= "00000000";
+                            next_state <= S1;
+                        end if;
+                    end if;
                 end if;
                 
             when S1 =>
-                if rising_edge(i_clk) then
+                if i_start = '1' then
                     done_con <= '0';
                     subbed <= '0';
                     if temp_done = '1' then
@@ -77,10 +100,14 @@ architecture project_reti_logiche_arch of project_reti_logiche is
                         o_mem_addr <= curr_addr;
                         next_state <= S2;
                     end if;
+                else
+                    o_done <= '0';
+                    temp_done <= '0';
+                    next_state <= S0;
                 end if;
                 
             when S2 =>
-                if rising_edge(i_clk) then
+                if i_start = '1' then
                     o_mem_en <= '0';
                     curr_val <= i_mem_data;
                     if i_mem_data = "00000000" then
@@ -96,7 +123,7 @@ architecture project_reti_logiche_arch of project_reti_logiche is
                 end if;
                 
             when S3 =>
-                if rising_edge(i_clk) then
+                if i_start = '1' then
                     if path = "10" or path = "11" then
                         o_mem_en <= '1';
                         o_mem_we <= '1';
@@ -104,6 +131,7 @@ architecture project_reti_logiche_arch of project_reti_logiche is
                             o_mem_addr <= curr_addr + 1;
                             o_mem_data <= "00011111";
                             prec_cred <= "00011111";
+                            next_state <= S4;
                         else
                             o_mem_addr <= curr_addr + 1;
                             if prec_cred = "00000000" then
@@ -115,13 +143,14 @@ architecture project_reti_logiche_arch of project_reti_logiche is
                                     prec_cred <= prec_cred - 1;
                                 end if;
                             end if;
+                            next_state <= S4;
                         end if;
                     end if;
                     next_state <= S4;
                 end if;
             
             when S4 =>
-                if rising_edge(i_clk) then
+                if i_start = '1' then
                     subbed <= '0';
                     if path = "11" then
                         o_mem_addr <= curr_addr;
@@ -131,10 +160,10 @@ architecture project_reti_logiche_arch of project_reti_logiche is
                 end if;
                 
             when S5 =>
-                if rising_edge(i_clk) then
+                if i_start = '1' then
                     if done_con = '0' then
                         done_con <= '1';
-                        if curr_addr = ((i_k-1) + (i_k-1) + i_add) then -- 2*(k-1)
+                        if curr_addr = last_addr then -- 2*(k-1)
                             temp_done <= '1';
                             o_done <= '1';
                         end if;
@@ -155,5 +184,6 @@ architecture project_reti_logiche_arch of project_reti_logiche is
                     next_state <= S1;
                 end if;
         end case;
+       end if; 
     end process;
 end architecture;
